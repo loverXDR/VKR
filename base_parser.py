@@ -23,6 +23,8 @@ class BaseParser:
         user_agent = ua.random
         self.options.add_argument(f'--user-agent={user_agent}')
         self.options.add_argument('window-size=1920x1080')
+        self.options.add_argument('--ignore-certificate-errors')
+        self.options.add_argument('--ignore-ssl-errors')
         self.browser = webdriver.Chrome(options=self.options)
 
     def write_to_csv(self, data):

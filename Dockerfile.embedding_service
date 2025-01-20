@@ -1,0 +1,9 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY embedding_service.py /app/embedding_service.py
+
+RUN pip install flask sentence-transformers torch
+
+CMD ["python", "embedding_service.py"]

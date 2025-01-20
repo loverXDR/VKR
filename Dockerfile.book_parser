@@ -1,0 +1,14 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY base_parser.py /app/base_parser.py
+COPY bhv_parser.py /app/bhv_parser.py
+COPY dmk_parser.py /app/dmk_parser.py
+COPY piter_parser.py /app/piter_parser.py
+COPY qdrant_db_update.py /app/qdrant_db_update.py
+COPY requirements.txt /app/requirements.txt
+
+RUN pip install -r requirements.txt
+
+CMD ["python", "qdrant_db_update.py"]

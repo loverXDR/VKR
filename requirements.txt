@@ -1,0 +1,10 @@
+flask
+sentence-transformers
+torch
+qdrant-client
+redminelib
+pandas
+python-dotenv
+requests
+selenium
+fake-useragent

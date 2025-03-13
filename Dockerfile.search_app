@@ -1,0 +1,39 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Установка основных зависимостей
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    python -m nltk.downloader punkt && \
+    python -m nltk.downloader stopwords && \
+    python -m nltk.downloader wordnet && \
+    python -m nltk.downloader omw-1.4 && \
+    python -m nltk.downloader punkt_tab
+# Для работы с GPU (опционально)
+RUN if [ "$USE_GPU" = "1" ]; then \
+    pip install --no-cache-dir torch==1.13.1; \
+fi
+
+COPY *.py /app/
+COPY templates/ /app/templates/
+
+# Создаем директории для моделей и логов
+RUN mkdir -p /app/models /app/logs
+
+EXPOSE 5000
+
+ENV PYTHONUNBUFFERED=1
+ENV USE_GPU=1
+ENV USE_WORD2VEC_ONLY=1
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 CMD curl -f http://localhost:5000/ || exit 1
+
+CMD ["python", "search_app.py"] 

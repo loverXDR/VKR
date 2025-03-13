@@ -1,9 +1,32 @@
+# Основные зависимости
 flask
-sentence-transformers
-torch
+flask-cors
+python-dotenv==0.21.1
+requests==2.28.2
+gunicorn==20.1.0
+werkzeug
+
+# Для векторной базы данных
 qdrant-client
+
+# Для Word2Vec модели
+gensim
+scipy
+numpy
 pandas
-python-dotenv
-requests
-selenium
+nltk
+
+# Для парсера
+selenium==4.8.0
+beautifulsoup4==4.11.2
+webdriver-manager==3.8.5
 fake-useragent
+
+# Для логирования
+python-json-logger==2.0.6
+
+# Для GPU-ускорения (если доступно)
+torch
+
+# Для тестирования
+pytest==7.2.1

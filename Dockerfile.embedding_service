@@ -1,9 +1,14 @@
-FROM python:3.9-slim
+FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
 
 WORKDIR /app
 
 COPY embedding_service.py /app/embedding_service.py
+COPY requirements.txt /app/requirements.txt
 
-RUN pip install flask sentence-transformers torch
+RUN pip install --no-cache-dir -r requirements.txt
+
+EXPOSE 5001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 CMD curl -f http://localhost:5001/health || exit 1
 
 CMD ["python", "embedding_service.py"]

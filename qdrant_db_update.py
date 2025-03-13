@@ -5,9 +5,13 @@ import os
 import logging
 from datetime import datetime
 import time
-import requests
 import torch
 import pytz
+import sys
+
+# Добавим импорт для интеграции с ModelService
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from model_service import ModelService
 
 # Настройка логирования
 def setup_logger():
@@ -36,16 +40,21 @@ def setup_logger():
 
 logger = setup_logger()
 
+# Получение параметров подключения из переменных окружения
+qdrant_host = os.environ.get("QDRANT_HOST", "localhost")
+qdrant_port = int(os.environ.get("QDRANT_PORT", 6333))
+
+logger.info(f"Подключение к Qdrant по адресу {qdrant_host}:{qdrant_port}")
+
 # Подключение и создание БД Qdrant
-client = QdrantClient(host="localhost", port=6333)
+client = QdrantClient(host=qdrant_host, port=qdrant_port)
 
 # Если коллекция не существует, создаем ее
 if not client.collection_exists("Books"):
     client.create_collection(
         collection_name="Books",
         vectors_config={
-            "text_with_notes": VectorParams(size=1024, distance=Distance.COSINE),
-            "text_without_notes": VectorParams(size=1024, distance=Distance.COSINE)
+            "text_vector": VectorParams(size=100, distance=Distance.COSINE)
         }
     )
 logger.info("Подключение к Qdrant успешно установлено")
@@ -107,31 +116,30 @@ def update_qdrant(current_df, last_df):
         logger.info("Нет изменений для обновления в базе данных")
         return
 
+    # Инициализируем ModelService для векторизации
+    model_service = ModelService()
+    if model_service.model is None:
+        logger.info("Модель Word2Vec не загружена, выполняем обучение...")
+        model_service.train_model()
+
+    # Создаем точки в формате для batch операций Qdrant
     points = []
     for row in df_to_update.itertuples():
-        # Текст с заметками
-        full_text = f"{row.name}.\n\n{row.annotation}"
-
-        # Текст без заметок
-        text_without_notes = f"{row.name}.\n\n{row.annotation}"
-
-        # Получаем векторы для обоих текстов
-        response_full = requests.post('http://embedding_service:5001/encode', json={'text': full_text})
-        response_without = requests.post('http://embedding_service:5001/encode', json={'text': text_without_notes})
-
-        vector_full = response_full.json()['vector']
-        vector_without = response_without.json()['vector']
-
+        # Текст для векторизации
+        text_content = f"{row.name}.\n\n{row.annotation}"
+        
+        # Получаем вектор с помощью Word2Vec
+        vector = model_service.get_text_vector(text_content)
+        
         # Преобразуем numpy.int64 в обычный int
         point_id = int(row.id)
         row_dict = df_to_update.loc[row.Index].to_dict()
 
-        # Создаем точку с использованием PointStruct
+        # Создаем точку с использованием PointStruct (современный формат)
         point = PointStruct(
             id=point_id,
             vector={
-                'text_with_notes': vector_full,
-                'text_without_notes': vector_without
+                'text_vector': vector.tolist()
             },
             payload=row_dict
         )
@@ -139,7 +147,7 @@ def update_qdrant(current_df, last_df):
 
     torch.cuda.empty_cache()
 
-    # Загрузка данных в Qdrant
+    # Загрузка данных в Qdrant (batch операция)
     client.upsert(
         collection_name="Books",
         points=points
@@ -148,6 +156,14 @@ def update_qdrant(current_df, last_df):
     logger.info(f"Обновлено {len(df_to_update)} записей в базе данных")
     for idx, row in df_to_update.iterrows():
         logger.info(f"Обновлен/добавлен тикет: ID {row['id']}, Название: {row['name']}")
+    
+    # Обновляем все векторы в базе данных для поддержания согласованности
+    logger.info("Обновление всех векторов Word2Vec в базе данных...")
+    try:
+        model_service.update_vectors_in_qdrant()
+        logger.info("Векторы Word2Vec обновлены успешно")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении векторов Word2Vec: {str(e)}")
 
 # Основной цикл
 def main():
@@ -168,7 +184,7 @@ def main():
             last_df = current_df.copy()
         else:
             logger.info("Нет новых обновлений")
-
+        
         logger.info("Цикл обновления завершен. Ожидание следующего цикла...")
         time.sleep(86400)  # Ожидание 24 часа до следующего обновления
 

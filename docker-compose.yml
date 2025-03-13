@@ -1,8 +1,8 @@
-version: '3.8'
+version: "3"
 
 services:
   qdrant:
-    image: qdrant/qdrant:v1.1.1
+    image: qdrant/qdrant:latest
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -11,35 +11,97 @@ services:
     networks:
       - qdrant_network
 
-  embedding_service:
-    build:
-      context: .
-      dockerfile: Dockerfile.embedding_service
-    ports:
-      - "5001:5001"
-    environment:
-      - CUDA_VISIBLE_DEVICES=0
-    depends_on:
-      - qdrant
-    networks:
-      - qdrant_network
-
   book_parser:
     build:
       context: .
       dockerfile: Dockerfile.book_parser
+    restart: always
+    volumes:
+      - ./logs:/app/logs
+      - ./models:/app/models
+      - ./data:/app/data
+    depends_on:
+      - qdrant
+      - selenium
+    platform: linux/amd64
     environment:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      - EMBEDDING_SERVICE_URL=http://embedding_service:5001
+      - PYTHONUNBUFFERED=1
+      - MAX_PAGES=1
+      - USE_WORD2VEC_ONLY=1
+      - SELENIUM_REMOTE_URL=http://selenium:4444/wd/hub
+    networks:
+      - qdrant_network
+
+  search_app:
+    build:
+      context: .
+      dockerfile: Dockerfile.search_app
+    ports:
+      - "5000:5000"
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - API_KEY=your_secure_api_key_here
+      - PYTHONUNBUFFERED=1
+      - USE_GPU=1
+      - USE_WORD2VEC_ONLY=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       - qdrant
-      - embedding_service
+    networks:
+      - qdrant_network
+    volumes:
+      - search_models:/app/models
+      - search_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  selenium:
+    image: selenium/standalone-chromium:latest # Для AMD64
+    # image: seleniarm/standalone-chromium:latest # Для ARM64 (раскомментируйте, если у вас ARM)
+    container_name: selenium-container
+    restart: unless-stopped
+    shm_size: 2g
+    ports:
+      - "4444:4444"  # Selenium WebDriver API
+      - "7900:7900"  # VNC Viewer (для отладки)
+    environment:
+      - SE_NODE_MAX_SESSIONS=2
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+      - SE_NODE_SESSION_TIMEOUT=300
+      - SE_START_XVFB=true
+      - SE_VNC_NO_PASSWORD=true
+      - SE_SCREEN_WIDTH=1920
+      - SE_SCREEN_HEIGHT=1080
+      - SE_NODE_GRID_URL=http://localhost:4444
+      - SE_NODE_DETECT_DRIVERS=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - /dev/shm:/dev/shm
     networks:
       - qdrant_network
 
 volumes:
   qdrant_data:
+  search_models:
+  search_logs:
 
 networks:
   qdrant_network:

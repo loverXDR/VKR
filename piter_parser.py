@@ -21,8 +21,8 @@ class PiterParser(BaseParser):
     def get_book_links(self, page):
         """Получение списка ссылок на книги с текущей страницы"""
         try:
-            self.browser.get(self.base_url.format(page))
-            block = self.browser.find_element(By.CLASS_NAME, "products-list")
+            self.driver.get(self.base_url.format(page))
+            block = self.driver.find_element(By.CLASS_NAME, "products-list")
             all_elements = block.find_elements(By.TAG_NAME, "a")
             return [link.get_attribute('href') for link in all_elements]
         except NoSuchElementException:
@@ -32,8 +32,8 @@ class PiterParser(BaseParser):
     def parse_book(self, link):
         """Парсинг информации о конкретной книге"""
         try:
-            self.browser.get(link)
-            main_elements = self.browser.find_element(By.CLASS_NAME, "product-info")
+            self.driver.get(link)
+            main_elements = self.driver.find_element(By.CLASS_NAME, "product-info")
             params = main_elements.find_element(By.CLASS_NAME, "params")
 
             data = {
@@ -47,7 +47,7 @@ class PiterParser(BaseParser):
                     "/html/body/section/div[2]/div[4]/div[2]/div/ul/li[3]/span[2]"
                 ).text),
                 'authors': main_elements.find_element(By.CLASS_NAME, "author").text,
-                'annotation': self.browser.find_element(
+                'annotation': self.driver.find_element(
                     By.CLASS_NAME,
                     "tabs"
                 ).find_element(By.ID, "tab-1").text,

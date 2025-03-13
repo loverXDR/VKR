@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ book.name }} | Детальная информация{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ book.name }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mt-3 book-details">
+    <div class="col-md-4 mb-4">
+        <img src="{{ book.image_url|default('https://via.placeholder.com/500x700?text=Нет+изображения') }}" alt="{{ book.name }}" class="book-cover img-fluid">
+        
+        <div class="mt-4">
+            <a href="{{ book.url }}" target="_blank" class="btn btn-primary w-100 mb-2">
+                <i class="fas fa-external-link-alt me-2"></i>Перейти на сайт
+            </a>
+            
+            {% if book.price %}
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h5 class="card-title">Цена</h5>
+                    <p class="card-text fs-4 fw-bold text-success">{{ book.price }} ₽</p>
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h5 class="card-title">Информация</h5>
+                    <ul class="list-group list-group-flush">
+                        {% if book.author %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Автор</span>
+                            <span class="fw-bold">{{ book.author }}</span>
+                        </li>
+                        {% endif %}
+                        
+                        {% if book.publisher %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Издательство</span>
+                            <span class="fw-bold">{{ book.publisher }}</span>
+                        </li>
+                        {% endif %}
+                        
+                        {% if book.year %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Год издания</span>
+                            <span class="fw-bold">{{ book.year }}</span>
+                        </li>
+                        {% endif %}
+                        
+                        {% if book.pages %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Количество страниц</span>
+                            <span class="fw-bold">{{ book.pages }}</span>
+                        </li>
+                        {% endif %}
+                        
+                        {% if book.isbn %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>ISBN</span>
+                            <span class="fw-bold">{{ book.isbn }}</span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <h1 class="mb-4">{{ book.name }}</h1>
+        
+        {% if book.author %}
+        <p class="lead">
+            <i class="fas fa-user me-2"></i>{{ book.author }}
+        </p>
+        {% endif %}
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Описание</h2>
+            </div>
+            <div class="card-body">
+                <p>{{ book.annotation|default('Описание отсутствует.')|safe }}</p>
+            </div>
+        </div>
+        
+        <div id="similar-books">
+            <h3 class="mb-3">Похожие ресурсы</h3>
+            <div class="row" id="similar-books-container">
+                <div class="col-12 text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Загрузка...</span>
+                    </div>
+                    <p>Загрузка похожих ресурсов...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Получаем данные о книге из сервера
+var bookData = {{ book_json|safe }};
+
+$(document).ready(function() {
+    // Запрос на получение похожих книг
+    $.ajax({
+        url: '/search',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ 
+            query: bookData.name + " " + (bookData.annotation || ""), 
+            limit: 5,
+            exclude_ids: [bookData.id]
+        }),
+        success: function(response) {
+            // Отображаем похожие книги
+            displaySimilarBooks(response.results);
+        },
+        error: function(error) {
+            $('#similar-books-container').html('<div class="col-12"><div class="alert alert-danger">Не удалось загрузить похожие ресурсы.</div></div>');
+        }
+    });
+    
+    // Функция для отображения похожих книг
+    function displaySimilarBooks(results) {
+        $('#similar-books-container').empty();
+        
+        if (!results || results.length === 0) {
+            $('#similar-books-container').html('<div class="col-12"><div class="alert alert-info">Похожие ресурсы не найдены.</div></div>');
+            return;
+        }
+        
+        // Показываем максимум 4 книги
+        var booksToShow = results.slice(0, 4);
+        
+        booksToShow.forEach(function(book) {
+            var imgUrl = book.image_url || 'https://via.placeholder.com/300x400?text=Нет+изображения';
+            
+            var bookCard = '<div class="col-md-6 col-lg-4 mb-4">' +
+                '<div class="card h-100">' +
+                '<img src="' + imgUrl + '" class="card-img-top" alt="' + book.name + '" style="height: 200px; object-fit: cover;">' +
+                '<div class="card-body">' +
+                '<h5 class="card-title">' + book.name + '</h5>' +
+                '<p class="card-text">' + truncateText(book.annotation || 'Нет описания', 70) + '</p>' +
+                '</div>' +
+                '<div class="card-footer bg-white border-top-0">' +
+                '<a href="/book/' + book.id + '" class="btn btn-primary btn-sm w-100">Подробнее</a>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+            
+            $('#similar-books-container').append(bookCard);
+        });
+    }
+    
+    // Вспомогательная функция для сокращения текста
+    function truncateText(text, maxLength) {
+        if (text.length <= maxLength) {
+            return text;
+        }
+        return text.substr(0, maxLength) + '...';
+    }
+});
+</script>
+{% endblock %} 

@@ -26,8 +26,8 @@ class DMKParser(BaseParser):
     def get_book_links(self, page):
         """Получение списка ссылок на книги с текущей страницы"""
         try:
-            self.browser.get(self.base_url.format(page))
-            block = self.browser.find_element(By.CLASS_NAME, "cont-all")
+            self.driver.get(self.base_url.format(page))
+            block = self.driver.find_element(By.CLASS_NAME, "cont-all")
             all_elements = block.find_elements(By.CLASS_NAME, "photo-small")
             return [link.get_attribute('href') for link in all_elements]
         except NoSuchElementException:
@@ -57,7 +57,7 @@ class DMKParser(BaseParser):
                 "/html/body/div[1]/div[4]/div/div/div/div[2]/div[1]/div[2]/div[2]/span[4]").text),
             'authors': main_elements.find_element(By.XPATH,
                 "/html/body/div[1]/div[4]/div/div/div/div[2]/div[1]/div[2]/div[2]/span[2]/a").text,
-            'annotation': self.browser.find_element(By.XPATH,
+            'annotation': self.driver.find_element(By.XPATH,
                 "/html/body/div[1]/div[4]/div/div/div/div[2]/div[4]/div").text
         }
 
@@ -71,8 +71,8 @@ class DMKParser(BaseParser):
     def parse_book(self, link):
         """Парсинг информации о конкретной книге"""
         try:
-            self.browser.get(link)
-            main_elements = self.browser.find_element(By.CLASS_NAME, "container")
+            self.driver.get(link)
+            main_elements = self.driver.find_element(By.CLASS_NAME, "container")
             params = main_elements.find_element(
                 By.XPATH,
                 "/html/body/div[1]/div[4]/div/div/div/div[1]/div[1]/div[3]"

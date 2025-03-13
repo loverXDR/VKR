@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+
+{% block title %}Поиск тематических ресурсов{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mb-5">
+    <div class="col-md-10">
+        <div class="search-container text-center">
+            <h1 class="mb-4">Поиск тематических ресурсов</h1>
+            <p class="lead mb-4">Найдите наиболее релевантные ресурсы по вашему запросу с помощью современных алгоритмов рекомендаций</p>
+            
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="input-group mb-3">
+                        <input type="text" id="search-input" class="form-control search-input" placeholder="Введите ваш запрос..." aria-label="Поисковый запрос">
+                        <button class="btn search-btn" type="button" id="search-button">
+                            <i class="fas fa-search me-2"></i>Искать
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-2">
+                <p class="text-muted">Например: <a href="#" class="search-example">машинное обучение</a>, <a href="#" class="search-example">программирование на Python</a>, <a href="#" class="search-example">алгоритмы и структуры данных</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Секция для отображения результатов поиска -->
+<div id="search-results" class="row" style="display: none;">
+    <div class="col-12">
+        <h2 class="mb-4">Результаты поиска</h2>
+        <div id="results-container" class="row">
+            <!-- Сюда будут добавлены результаты поиска через JS -->
+        </div>
+    </div>
+</div>
+
+<!-- Секция с рекомендуемыми книгами -->
+<div class="row mt-5">
+    <div class="col-12">
+    </div>
+</div>
+
+<!-- Секция "О проекте" -->
+<div id="about" class="row mt-5">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title">О проекте</h2>
+                <p class="card-text">
+                    Система рекомендаций тематических ресурсов разработана в рамках выпускной квалификационной работы.
+                    Основная задача проекта - создать интеллектуальную систему, которая поможет пользователям находить
+                    наиболее релевантные ресурсы по интересующим их темам.
+                </p>
+                <p class="card-text">
+                    В основе системы лежит технология векторных представлений (word2vec), которая позволяет находить ресурсы
+                    не только по точному совпадению ключевых слов, но и по семантической близости.
+                </p>
+                <p class="card-text">
+                    Система анализирует большой объем данных, собранных с различных специализированных сайтов,
+                    и предлагает наиболее подходящие варианты на основе вашего запроса.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Загрузка случайных книг при загрузке страницы
+        loadRandomBooks();
+        
+        // Обработка клика по кнопке поиска
+        $('#search-button').click(function() {
+            performSearch();
+        });
+        
+        // Обработка нажатия Enter в поле поиска
+        $('#search-input').keypress(function(e) {
+            if (e.which === 13) {
+                performSearch();
+            }
+        });
+        
+        // Обработка клика по примерам поисковых запросов
+        $('.search-example').click(function(e) {
+            e.preventDefault();
+            $('#search-input').val($(this).text());
+            performSearch();
+        });
+        
+        // Функция для выполнения поискового запроса
+        function performSearch() {
+            const query = $('#search-input').val().trim();
+            
+            if (!query) {
+                alert('Пожалуйста, введите поисковый запрос');
+                return;
+            }
+            
+            // Отображение индикатора загрузки
+            $('#results-container').html('<div class="col-12 text-center"><div class="spinner-border text-primary" role="status"></div><p>Ищем подходящие ресурсы...</p></div>');
+            $('#search-results').show();
+            
+            // Отправка AJAX запроса на сервер
+            $.ajax({
+                url: '/search',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ query: query, limit: 20 }),
+                success: function(response) {
+                    displaySearchResults(response.results);
+                },
+                error: function(error) {
+                    $('#results-container').html('<div class="col-12"><div class="alert alert-danger">Произошла ошибка при обработке запроса. Пожалуйста, попробуйте позже.</div></div>');
+                    console.error('Error:', error);
+                }
+            });
+        }
+        
+        // Функция для отображения результатов поиска
+        function displaySearchResults(results) {
+            $('#results-container').empty();
+            
+            if (results.length === 0) {
+                $('#results-container').html('<div class="col-12"><div class="alert alert-info">По вашему запросу ничего не найдено. Попробуйте изменить запрос.</div></div>');
+                return;
+            }
+            
+            results.forEach(function(book) {
+                const scorePercent = Math.round(book.score * 100);
+                const imgUrl = book.image_url || 'https://via.placeholder.com/300x400?text=Нет+изображения';
+                
+                const bookCard = `
+                <div class="col-md-4 col-lg-3">
+                    <div class="card h-100">
+                        <div class="result-score">${scorePercent}%</div>
+                        <img src="${imgUrl}" class="card-img-top" alt="${book.name}">
+                        <div class="card-body">
+                            <h5 class="card-title">${book.name}</h5>
+                            <p class="card-text">${truncateText(book.annotation || 'Нет описания', 100)}</p>
+                        </div>
+                        <div class="card-footer bg-white border-top-0">
+                            <a href="/book/${book.id}" class="btn btn-primary btn-sm w-100">Подробнее</a>
+                        </div>
+                    </div>
+                </div>`;
+                
+                $('#results-container').append(bookCard);
+            });
+        }
+        
+        // Функция для загрузки случайных книг
+        function loadRandomBooks() {
+            $.ajax({
+                url: '/api/random_books',
+                method: 'GET',
+                data: { limit: 8 },
+                success: function(response) {
+                    displayRandomBooks(response.books);
+                },
+                error: function(error) {
+                    $('#random-books').html('<div class="col-12"><div class="alert alert-danger">Не удалось загрузить рекомендации.</div></div>');
+                    console.error('Error:', error);
+                }
+            });
+        }
+        
+        // Функция для отображения случайных книг
+        function displayRandomBooks(books) {
+            $('#random-books').empty();
+            
+            if (!books || books.length === 0) {
+                $('#random-books').html('<div class="col-12"><div class="alert alert-info">Рекомендации недоступны.</div></div>');
+                return;
+            }
+            
+            books.forEach(function(book) {
+                const imgUrl = book.image_url || 'https://via.placeholder.com/300x400?text=Нет+изображения';
+                
+                const bookCard = `
+                <div class="col-md-4 col-lg-3">
+                    <div class="card h-100">
+                        <img src="${imgUrl}" class="card-img-top" alt="${book.name}">
+                        <div class="card-body">
+                            <h5 class="card-title">${book.name}</h5>
+                            <p class="card-text">${truncateText(book.annotation || 'Нет описания', 100)}</p>
+                        </div>
+                        <div class="card-footer bg-white border-top-0">
+                            <a href="/book/${book.id}" class="btn btn-primary btn-sm w-100">Подробнее</a>
+                        </div>
+                    </div>
+                </div>`;
+                
+                $('#random-books').append(bookCard);
+            });
+        }
+        
+        // Вспомогательная функция для сокращения текста
+        function truncateText(text, maxLength) {
+            if (text.length <= maxLength) return text;
+            return text.substr(0, maxLength) + '...';
+        }
+    });
+</script>
+{% endblock %} 

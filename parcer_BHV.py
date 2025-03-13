@@ -37,7 +37,7 @@ options.add_argument('window-size=1920x1080')
 #options.add_argument(f'--proxy-server={proxy[1]}')
 browser = webdriver.Chrome(options=options)
 
-for page in range (1,105):
+for page in range (1,1):
     try:
         browser.get(f'https://bhv.ru/product-category/kompyutery-i-programmy/page/{page}/')
         #поиск по общему классу

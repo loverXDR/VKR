@@ -2,13 +2,70 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
+# Устанавливаем необходимые пакеты, включая curl для healthcheck
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    gnupg \
+    ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY base_parser.py /app/base_parser.py
 COPY bhv_parser.py /app/bhv_parser.py
 COPY dmk_parser.py /app/dmk_parser.py
 COPY piter_parser.py /app/piter_parser.py
 COPY qdrant_db_update.py /app/qdrant_db_update.py
+COPY model_service.py /app/model_service.py
 COPY requirements.txt /app/requirements.txt
 
-RUN pip install -r requirements.txt
+# Создаем директории для моделей и логов
+RUN mkdir -p /app/models /app/logs
 
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Добавляем переменную окружения для подключения к удаленному Selenium и времени ожидания
+ENV SELENIUM_REMOTE_URL="http://selenium:4444/wd/hub"
+ENV PYTHONUNBUFFERED=1
+ENV WAIT_SELENIUM_TIMEOUT=60
+ENV QDRANT_HOST=localhost
+ENV QDRANT_PORT=6333
+
+# Создаем скрипт для ожидания доступности Selenium и Qdrant перед запуском парсера
+COPY <<EOF /app/wait-for-services.sh
+#!/bin/bash
+set -e
+
+SELENIUM_TIMEOUT=\${WAIT_SELENIUM_TIMEOUT:-60}
+QDRANT_TIMEOUT=60
+MAX_RETRIES=\${MAX_RETRIES:-5}
+RETRY_COUNT=0
+
+echo "Waiting for Selenium to be ready at \$SELENIUM_REMOTE_URL..."
+until curl --output /dev/null --silent --fail \$SELENIUM_REMOTE_URL/status || [ \$RETRY_COUNT -eq \$MAX_RETRIES ]; do
+  if [ \$((RETRY_COUNT++)) -ge \$MAX_RETRIES ]; then
+    echo "Selenium не стал доступен после \$MAX_RETRIES попыток, продолжаем запуск..."
+    break
+  fi
+  
+  echo "Selenium не доступен, ожидание..."
+  sleep 5
+done
+
+if curl --output /dev/null --silent --fail \$SELENIUM_REMOTE_URL/status; then
+  echo "Selenium готов к работе!"
+else
+  echo "Запускаем парсер, хотя Selenium может быть еще не готов..."
+fi
+
+
+
+exec "\$@"
+EOF
+
+RUN chmod +x /app/wait-for-services.sh
+
+# Используем скрипт ожидания перед запуском основного приложения
+ENTRYPOINT ["/app/wait-for-services.sh"]
 CMD ["python", "qdrant_db_update.py"]

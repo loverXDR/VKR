@@ -1,157 +1,138 @@
-from base_parser import BaseParser
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
-import time
-import os
-import logging
+#https://bhv.ru/product-category/kompyutery-i-programmy/
 
-logger = logging.getLogger(__name__)
 
-class BHVParser(BaseParser):
-    def __init__(self):
-        super().__init__('dataset_BHV.csv')
-        self.base_url = 'https://bhv.ru/product-category/kompyutery-i-programmy/page/{}'
-        self.max_pages = int(os.getenv('MAX_PAGES', '1'))
-        self.publisher = "БХВ-Петербург"
-        logger.info(f"Установлено ограничение на парсинг: {self.max_pages} страниц")
+from bs4 import BeautifulSoup
+import requests
 
-    def get_book_links(self, page):
-        self.driver.get(self.base_url.format(page))
-        block = self.driver.find_element(By.CLASS_NAME, "content-area")
-        all_elements = block.find_elements(By.CLASS_NAME, "woocommerce-loop-product__link")
-        all_elements = all_elements[1::2]
-        return [link.get_attribute('href') for link in all_elements]
+url = 'https://bhv.ru/product-category/kompyutery-i-programmy/page/3/'
+page = requests.get(url)
 
-    def parse_book(self, link):
-        try:
-            self.driver.get(link)
-            print(1)
-            time.sleep(2)  # Увеличиваем время ожидания для полной загрузки страницы
-            self.driver.execute_script("window.scrollTo(0, 1080)")
-            
-            # Добавим явное ожидание для улучшения стабильности
-            time.sleep(1)
-            
-            main_elements = self.driver.find_element(By.CLASS_NAME, "site-content")
-            params = main_elements.find_element(By.CLASS_NAME, "wc-tabs-wrapper")
-            
-            data = {
-                'name': main_elements.find_element(By.TAG_NAME, "h1").text,
-                'url': link,
-                'publisher': self.publisher,
-                'image_url': '', 
-                'price': '',
-                'isbn': ''
-            }
-            
-            # Получить изображение книги
+soup = BeautifulSoup(page.text, 'lxml')
+count = soup.find(class_='woocommerce-result-count')
+count = count.text
+
+total_results = int(count.split('of ')[1].split(' ')[0])
+
+
+
+books = []
+
+books_list = soup.find_all(class_='product')
+
+# ⦁ название (name) -
+# ⦁ год издания (year) -
+# ⦁ количество страниц (pages)-
+# ⦁ авторы (authors)-
+# ⦁ аннотация (annotation)
+# ⦁ URL страницы (url)-
+# ⦁ издательство (publisher)-
+# ⦁ цена (price) -
+# ⦁ ISBN (isbn)-
+# ⦁ URL изображения (image_url)-
+
+def extract_book_info(book_element):
+    book_info = {}
+
+
+
+    book_name = book_element.find(class_="woocommerce-loop-product__title")
+    if book_name:
+        book_info['name'] = book_name.text.strip()
+    book_price = book_element.find(class_="price")
+
+
+    if book_price:
+        book_info['price'] = book_price.text.split("₽")
+        for i in range(len(book_info['price'])):
             try:
-                data['image_url'] = main_elements.find_element(By.CLASS_NAME, "wp-post-image").get_attribute('src')
-            except NoSuchElementException:
-                logger.warning(f"Не удалось найти изображение для книги: {data['name']}")
-            
-            # Получить цену
-            try:
-                price_text = main_elements.find_element(By.CLASS_NAME, "price").text
-                # Очистка от лишних символов (например, "₽")
-                data['price'] = ''.join(filter(str.isdigit, price_text))
-            except NoSuchElementException:
-                logger.warning(f"Не удалось найти цену для книги: {data['name']}")
+                book_info['price'][i] = int(book_info['price'][i].strip())
+            except:
+                del(book_info['price'][i])
+        book_info['price'] = min(book_info['price'])
+    else:
+        book_info['price'] = 0
+    book_authors = book_element.find_all(class_="author")
 
-            # Get additional information
-            try:
-                addition = params.find_element(By.CLASS_NAME, "wc-tabs").find_element(
-                    By.CSS_SELECTOR, "#tab-title-additional_information").find_element(By.TAG_NAME, 'a')
-                addition.click()
-                time.sleep(1)  # Ждем загрузки дополнительной информации
-                params = main_elements.find_element(By.CLASS_NAME, "wc-tabs-wrapper")
+    
+    if book_authors:
+        authors = [author.text for author in book_authors]
+        book_info['authors'] = authors
+    else:
+        book_info['authors'] = []
 
-                data.update({
-                    'year': int(params.find_element(By.CSS_SELECTOR,
-                        "#tab-additional_information > table > tbody > tr:nth-child(7) > td").text),
-                    'pages': int(params.find_element(By.CSS_SELECTOR,
-                        "#tab-additional_information > table > tbody > tr:nth-child(3) > td").text),
-                    'authors': main_elements.find_element(By.CLASS_NAME, "author").text,
-                })
-            except (NoSuchElementException, ValueError) as e:
-                logger.warning(f"Ошибка при получении дополнительной информации: {str(e)}")
-                # Установим значения по умолчанию
-                if 'year' not in data:
-                    data['year'] = 0
-                if 'pages' not in data:
-                    data['pages'] = 0
-                if 'authors' not in data:
-                    try:
-                        data['authors'] = main_elements.find_element(By.CLASS_NAME, "author").text
-                    except NoSuchElementException:
-                        data['authors'] = ''
+    book_link = book_element.find(class_="woocommerce-LoopProduct-link")
+    if book_link:
+        book_info['url'] = book_link.get('href')
+    else:
+        book_info['url'] = ''
 
-            # Handle multiple authors
-            if 'authors' in data and data['authors'] and data['authors'][-1] == ',':
-                try:
-                    authors = main_elements.find_element(By.CLASS_NAME, 'entry-summary').find_elements(
-                        By.CLASS_NAME, "author")
-                    data['authors'] = ' '.join(author.text for author in authors)
-                except NoSuchElementException:
-                    pass
+    book_image = book_element.find(class_="attachment-woocommerce_thumbnail")
+    if book_image:
+        book_info['image_url'] = book_image.get('data-src').replace('-231x326', '')
+    else:
+        book_info['image_url'] = ''
+    
+    
+    url = book_info['url']
 
-            # Get annotation
-            try:
-                addition = params.find_element(By.CLASS_NAME, "wc-tabs").find_element(
-                    By.ID, "tab-title-description").find_element(By.TAG_NAME, 'a')
-                addition.click()
-                time.sleep(1)  # Ждем загрузки описания
-                
-                try:
-                    data['annotation'] = params.find_element(By.CLASS_NAME, "wpb_wrapper").text
-                except NoSuchElementException:
-                    try:
-                        data['annotation'] = main_elements.find_element(By.CLASS_NAME, 'wc-tab').text
-                    except NoSuchElementException:
-                        data['annotation'] = ""
-            except NoSuchElementException:
-                data['annotation'] = ""
-                    
-            # Получить ISBN
-            try:
-                isbn_row = self.driver.find_element(By.XPATH, "//th[contains(text(), 'ISBN')]/following-sibling::td")
-                data['isbn'] = isbn_row.text
-            except NoSuchElementException:
-                logger.warning(f"Не удалось найти ISBN для книги: {data['name']}")
+    page = requests.get(url)
+    book_page = requests.get(url)
+    book_page = BeautifulSoup(page.content, 'lxml')
+    with open('test.html', 'w', encoding='utf-8') as f:
+        f.write(book_page.prettify())
 
-            return data
-        except Exception as e:
-            logger.error(f"Ошибка при парсинге страницы {link}: {str(e)}")
-            return None
+    book_description = book_page.find('meta', attrs={'itemprop': 'description'})
 
-    def parse(self):
-        for page in range(1, self.max_pages + 1):
-            try:
-                logger.info(f'Обработка страницы {page} из {self.max_pages} ({page/self.max_pages*100:.2f}%)')
-                links = self.get_book_links(page)
-                print(links)
-                for link in links:
-                    if link != "javascript:void(0);":
-                        data = self.parse_book(link)
-                        if data:
-                            # Записываем данные и в CSV, и в Qdrant
-                            self.write_to_csv(data)
-                            if self.save_to_qdrant(data):
-                                logger.info(f"Книга успешно сохранена: {data.get('name')}")
-                            else:
-                                logger.warning(f"Не удалось сохранить книгу в Qdrant: {data.get('name')}")
-                            
-            except NoSuchElementException as e:
-                logger.error(f"Ошибка на странице {page}: {str(e)}")
-                time.sleep(10)
-                continue
+    if book_description:
+        book_info['annotation'] = book_description['content']
+    else:
+        book_info['annotation'] = ''
 
-def main():
-    parser = BHVParser()
-    try:
-        parser.parse()
-    finally:
-        parser.close_browser()
 
-if __name__ == "__main__":
-    main()
+    book_pages = book_page.find('meta', attrs={'itemprop': 'numberOfPages'})
+    if book_pages:
+        book_info['pages'] = int(book_pages['content'])
+    else:
+        book_info['pages'] = 0
+
+
+    book_year = book_page.find('meta', attrs={'itemprop': 'datePublished'})
+    if book_year:
+        book_info['year'] = book_year['content']
+    else:
+        book_info['year'] = ''
+
+
+    book_publisher = book_page.find('meta', attrs={'itemprop': 'publisher'})
+    if book_publisher:
+        book_info['publisher'] = book_publisher['content']
+    else:
+        book_info['publisher'] = ''
+
+
+    book_isbn = book_page.find('meta', attrs={'itemprop': 'isbn'})
+    if book_isbn:
+        book_info['isbn'] = book_isbn['content']
+    else:
+        book_info['isbn'] = ''
+
+    return book_info
+
+print(extract_book_info(books_list[6]))
+
+import pandas as pd
+
+books = []
+
+for s in range(0, int(total_results/32) + 1):
+    url = f'https://bhv.ru/product-category/kompyutery-i-programmy/page/{s}/'
+    page = requests.get(url)
+
+    soup = BeautifulSoup(page.text, 'lxml')
+    books_list = soup.find_all(class_='product')
+    for book in books_list:
+        books.append(extract_book_info(book))
+    print(f'{len(books)} книг сохранено за {s} страниц. осталось {total_results/32+1 - s} страниц')
+
+df = pd.DataFrame(books)
+df.to_csv('bhv1.csv', index=False)
